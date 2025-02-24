@@ -12,12 +12,12 @@ const { Client } = pg;
 
 const ENABLE_LOGGING = false;
 
-const VALUE_STRING = '130237967670177794'
-const VALUE_BIGINT = 130237967670177794n
+const VALUE_STRING = '130237967670177794';
+const VALUE_BIGINT = 130237967670177794n;
 
 /*
 	Test cases:
-	- querying nested relation containing bigint values, with no precision loss
+	- querying with relation containing bigint values, with no precision loss
 */
 
 let pgContainer: Docker.Container;
@@ -106,40 +106,113 @@ beforeEach(async () => {
         parent_bigint_id int8 NOT NULL,
         CONSTRAINT test_bigint_child_pkey PRIMARY KEY (child_serial_bigint_id)
       );
+
+      CREATE TABLE public.test_custom_bigint (
+        serial_bigint_id bigserial NOT NULL,
+        custom_bigint int8 NOT NULL,
+        CONSTRAINT test_custom_bigint_pkey PRIMARY KEY (serial_bigint_id)
+      );
+
+			CREATE TABLE public.test_custom_bigint_child (
+        child_serial_bigint_id bigserial NOT NULL,
+        child_custom_bigint int8 NOT NULL,
+        parent_bigint_id int8 NOT NULL,
+        CONSTRAINT test_custom_bigint_child_pkey PRIMARY KEY (child_serial_bigint_id)
+      );
 		`,
 	);
 });
 
 test('bigint and bigserial should not loose precisision even in relation', async () => {
+	await db.insert(schema.TestBigint).values({
+		serialBigintId: VALUE_BIGINT,
+		nonSerialBigint: VALUE_BIGINT,
+	});
 
-  await db.insert(schema.TestBigint).values({
-    serialBigintId: VALUE_BIGINT,
-    nonSerialBigint: VALUE_BIGINT
-  })
+	await db.insert(schema.TestBigintChild).values({
+		childSerialBigintId: VALUE_BIGINT,
+		childNonSerialBigint: VALUE_BIGINT,
+		parentBigintId: VALUE_BIGINT,
+	});
 
-  await db.insert(schema.TestBigintChild).values({
-    childSerialBigintId: VALUE_BIGINT,
-    childNonSerialBigint: VALUE_BIGINT,
-    parentBigintId: VALUE_BIGINT
-  })
+	const query = db.query.TestBigint.findFirst({
+		with: {
+			children: {
+				with: {
+					parent: true,
+				},
+			},
+		},
+	});
 
-  const res = await db.query.TestBigint.findFirst({
-    with: {
-      children: true,
-    },
-  })
+	const querySql = query.toSQL();
 
-  if (!res) { throw new Error('Type guard') }
+	console.log(querySql);
 
-  expect(res.serialBigintId).toEqual(VALUE_BIGINT)
-  expect(res.nonSerialBigint).toEqual(VALUE_BIGINT)
+	const res = await query;
 
-  const child = res.children[0]
+	if (!res) throw new Error('Type guard');
 
-  if (!child) { throw new Error('Type guard') }
+	expect(res.serialBigintId).toEqual(VALUE_BIGINT);
+	expect(res.nonSerialBigint).toEqual(VALUE_BIGINT);
 
-  expect(child.childSerialBigintId).toEqual(VALUE_BIGINT)
-  expect(child.childNonSerialBigint).toEqual(VALUE_BIGINT)
-  expect(child.parentBigintId).toEqual(VALUE_BIGINT)
+	const child = res.children[0];
 
+	if (!child) throw new Error('Type guard');
+
+	expect(child.childSerialBigintId).toEqual(VALUE_BIGINT);
+	expect(child.childNonSerialBigint).toEqual(VALUE_BIGINT);
+	expect(child.parentBigintId).toEqual(VALUE_BIGINT);
+
+	if (!child.parent) throw new Error('Type guard');
+
+	expect(child.parent.serialBigintId).toEqual(VALUE_BIGINT);
+	expect(child.parent.nonSerialBigint).toEqual(VALUE_BIGINT);
+});
+
+test('custom bigint and bigserial should not loose precisision even in relation', async () => {
+	await db.insert(schema.TestCustomBigint).values({
+		serialBigintId: VALUE_BIGINT,
+		customBigint: VALUE_BIGINT,
+	});
+
+	await db.insert(schema.TestCustomBigintChild).values({
+		childSerialBigintId: VALUE_BIGINT,
+		childCustomBigint: VALUE_BIGINT,
+		parentBigintId: VALUE_BIGINT,
+	});
+
+	const query = db.query.TestCustomBigint.findFirst({
+		with: {
+			children: {
+				with: {
+					parent: true,
+				},
+			},
+		},
+	});
+
+	const querySql = query.toSQL();
+
+	console.log(querySql);
+
+	const res = await query;
+
+	if (!res) throw new Error('Type guard');
+
+	expect(res.serialBigintId).toEqual(VALUE_BIGINT);
+	expect(res.customBigint).toEqual(VALUE_BIGINT);
+
+	const child = res.children[0];
+
+	if (!child) throw new Error('Type guard');
+
+	expect(child.childSerialBigintId).toEqual(VALUE_BIGINT);
+	expect(child.childCustomBigint).toEqual(VALUE_BIGINT);
+	expect(child.parentBigintId).toEqual(VALUE_BIGINT);
+
+	if (!child.parent) throw new Error('Type guard');
+
+	expect(child.parent.serialBigintId).toEqual(VALUE_BIGINT);
+	expect(child.parent.customBigint).toEqual(VALUE_BIGINT);
 });
