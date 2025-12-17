@@ -63,6 +63,28 @@ export interface PgDialectConfig {
 	casing?: Casing;
 }
 
+// https://github.com/drizzle-team/drizzle-orm/issues/2066#issuecomment-2622816364
+const aliasMap = new Map();
+const maxLen = 62;
+function shortenAlias(input: string) {
+	// If input is already short enough, return it unchanged
+	if (input.length <= maxLen) return input;
+
+	// Check if we've already created an alias for this input
+	const fromCache = aliasMap.get(input);
+	if (fromCache) return fromCache;
+
+	// Create a repeatable, deterministic hash
+	const hash = Array.from(input)
+		.reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0) // the `| 0` constrains to a 32-bit integer to prevent overflow
+		.toString(36); // convert to base 36 for brevity
+
+	// Create & save new alias
+	const shortened = `__${hash}__`;
+	aliasMap.set(input, shortened);
+	return shortened;
+}
+
 export class PgDialect {
 	static readonly [entityKind]: string = 'PgDialect';
 
@@ -1304,7 +1326,8 @@ export class PgDialect {
 				const normalizedRelation = normalizeRelation(schema, tableNamesMap, relation);
 				const relationTableName = getTableUniqueName(relation.referencedTable);
 				const relationTableTsName = tableNamesMap[relationTableName]!;
-				const relationTableAlias = `${tableAlias}_${selectedRelationTsKey}`;
+				// const relationTableAlias = `${tableAlias}_${selectedRelationTsKey}`;
+				const relationTableAlias = shortenAlias(`${tableAlias}_${selectedRelationTsKey}`);
 				const joinOn = and(
 					...normalizedRelation.fields.map((field, i) =>
 						eq(
@@ -1360,7 +1383,7 @@ export class PgDialect {
 				sql.join(
 					selection.map(({ field, tsKey, isJson }) =>
 						isJson
-							? sql`${sql.identifier(`${tableAlias}_${tsKey}`)}.${sql.identifier('data')}`
+							? sql`${sql.identifier(shortenAlias(`${tableAlias}_${tsKey}`))}.${sql.identifier('data')}`
 							: is(field, SQL.Aliased)
 							? field.sql
 							: (is(field, PgBigSerial64) || is(field, PgBigInt64)
